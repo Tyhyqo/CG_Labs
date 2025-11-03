@@ -1,0 +1,13 @@
+# Build directories
+build-*/
+build/
+
+# Compiled shaders
+shaders/*.spv
+
+# ImGui config
+imgui.ini
+
+# IDE
+.vs/
+.vscode/.vs/
