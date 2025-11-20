@@ -23,13 +23,71 @@ struct Vertex {
 	// NOTE: You can add more attributes
 };
 
+// Направленный свет (один глобальный)
+struct DirectionalLight {
+    veekay::vec3 direction;
+    float _pad0;
+    veekay::vec3 ambient;
+    float _pad1;
+    veekay::vec3 diffuse;
+    float _pad2;
+    veekay::vec3 specular;
+    float _pad3;
+};
+
+// Точечный источник света
+struct PointLight {
+    veekay::vec3 position;
+    float _pad0;
+    veekay::vec3 ambient;
+    float _pad1;
+    veekay::vec3 diffuse;
+    float _pad2;
+    veekay::vec3 specular;
+    float constant;   // затухание
+    float linear;
+    float quadratic;
+    float _pad3;
+};
+
+// Прожектор
+struct SpotLight {
+    veekay::vec3 position;
+    float _pad0;
+    veekay::vec3 direction;
+    float _pad1;
+    veekay::vec3 ambient;
+    float _pad2;
+    veekay::vec3 diffuse;
+    float _pad3;
+    veekay::vec3 specular;
+    float constant;
+    float linear;
+    float quadratic;
+    float cutOff;        // внутренний угол (cos)
+    float outerCutOff;   // внешний угол (cos) для гладких краев
+    float _pad4[3];
+};
+
 struct SceneUniforms {
 	veekay::mat4 view_projection;
+	veekay::vec3 view_position;  // позиция камеры для specular
+	float _pad0;
+	DirectionalLight directional_light;
 };
 
 struct ModelUniforms {
 	veekay::mat4 model;
-	veekay::vec3 albedo_color; float _pad0;
+	veekay::vec3 albedo_color;
+    float shininess;           // добавлено
+    veekay::vec3 specular_color; // добавлено
+	float _pad0;
+};
+
+struct Material {
+    veekay::vec3 albedo;      // диффузный цвет
+    veekay::vec3 specular;    // цвет бликов
+    float shininess;          // блеск (показатель степени)
 };
 
 struct Mesh {
@@ -50,7 +108,7 @@ struct Transform {
 struct Model {
 	Mesh mesh;
 	Transform transform;
-	veekay::vec3 albedo_color;
+	Material material;  // заменили albedo_color на material
 };
 
 struct Camera {
@@ -83,22 +141,32 @@ inline namespace {
 
 // NOTE: Vulkan objects
 inline namespace {
-	VkShaderModule vertex_shader_module;
-	VkShaderModule fragment_shader_module;
+    VkShaderModule vertex_shader_module;
+    VkShaderModule fragment_shader_module;
 
-	VkDescriptorPool descriptor_pool;
-	VkDescriptorSetLayout descriptor_set_layout;
-	VkDescriptorSet descriptor_set;
+    VkDescriptorPool descriptor_pool;
+    VkDescriptorSetLayout descriptor_set_layout;
+    VkDescriptorSet descriptor_set;
 
-	VkPipelineLayout pipeline_layout;
-	VkPipeline pipeline;
+    VkPipelineLayout pipeline_layout;
+    VkPipeline pipeline;
 
-	veekay::graphics::Buffer* scene_uniforms_buffer;
-	veekay::graphics::Buffer* model_uniforms_buffer;
+    veekay::graphics::Buffer* scene_uniforms_buffer;
+    veekay::graphics::Buffer* model_uniforms_buffer;
 
-	Mesh plane_mesh;
-	Mesh cube_mesh;
-	Mesh sphere_mesh;
+    // Добавьте эти строки:
+    veekay::graphics::Buffer* point_lights_buffer;
+    veekay::graphics::Buffer* spot_lights_buffer;
+    
+    constexpr uint32_t max_point_lights = 16;
+    constexpr uint32_t max_spot_lights = 16;
+    
+    std::vector<PointLight> point_lights;
+    std::vector<SpotLight> spot_lights;
+
+    Mesh plane_mesh;
+    Mesh cube_mesh;
+    Mesh sphere_mesh;
 
 	veekay::graphics::Texture* missing_texture;
 	VkSampler missing_texture_sampler;
@@ -324,6 +392,11 @@ void initialize(VkCommandBuffer cmd) {
 				{
 					.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 					.descriptorCount = 8,
+				},
+				// Добавьте:
+				{
+					.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+					.descriptorCount = 8,
 				}
 			};
 			
@@ -356,6 +429,19 @@ void initialize(VkCommandBuffer cmd) {
 					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
 					.descriptorCount = 1,
 					.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+				},
+				// Добавьте эти два binding:
+				{
+					.binding = 2,
+					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+					.descriptorCount = 1,
+					.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+				},
+				{
+					.binding = 3,
+					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+					.descriptorCount = 1,
+					.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
 				},
 			};
 
@@ -437,7 +523,44 @@ void initialize(VkCommandBuffer cmd) {
 		nullptr,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 
-	// NOTE: This texture and sampler is used when texture could not be loaded
+    // Добавьте создание буферов для источников света:
+    point_lights_buffer = new veekay::graphics::Buffer(
+        max_point_lights * sizeof(PointLight),
+        nullptr,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+    spot_lights_buffer = new veekay::graphics::Buffer(
+        max_spot_lights * sizeof(SpotLight),
+        nullptr,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+    // Инициализация источников света (пример)
+    point_lights.clear();
+    point_lights.push_back(PointLight{
+        .position = {2.0f, -2.0f, 2.0f},
+        .ambient = {0.1f, 0.1f, 0.1f},
+        .diffuse = {1.0f, 0.8f, 0.6f},
+        .specular = {1.0f, 1.0f, 1.0f},
+        .constant = 1.0f,
+        .linear = 0.09f,
+        .quadratic = 0.032f,
+    });
+
+    spot_lights.clear();
+    spot_lights.push_back(SpotLight{
+        .position = {0.0f, -3.0f, 0.0f},
+        .direction = {0.0f, 1.0f, 0.0f},
+        .ambient = {0.05f, 0.05f, 0.05f},
+        .diffuse = {1.0f, 1.0f, 1.0f},
+        .specular = {1.0f, 1.0f, 1.0f},
+        .constant = 1.0f,
+        .linear = 0.09f,
+        .quadratic = 0.032f,
+        .cutOff = cosf(toRadians(12.5f)),
+        .outerCutOff = cosf(toRadians(17.5f)),
+    });
+
+    // NOTE: This texture and sampler is used when texture could not be loaded
 	{
 		VkSamplerCreateInfo info{
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -472,6 +595,17 @@ void initialize(VkCommandBuffer cmd) {
 				.offset = 0,
 				.range = sizeof(ModelUniforms),
 			},
+			// Добавьте:
+			{
+				.buffer = point_lights_buffer->buffer,
+				.offset = 0,
+				.range = max_point_lights * sizeof(PointLight),
+			},
+			{
+				.buffer = spot_lights_buffer->buffer,
+				.offset = 0,
+				.range = max_spot_lights * sizeof(SpotLight),
+			},
 		};
 
 		VkWriteDescriptorSet write_infos[] = {
@@ -492,6 +626,25 @@ void initialize(VkCommandBuffer cmd) {
 				.descriptorCount = 1,
 				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
 				.pBufferInfo = &buffer_infos[1],
+			},
+			// Добавьте:
+			{
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = descriptor_set,
+				.dstBinding = 2,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+				.pBufferInfo = &buffer_infos[2],
+			},
+			{
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = descriptor_set,
+				.dstBinding = 3,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+				.pBufferInfo = &buffer_infos[3],
 			},
 		};
 
@@ -648,7 +801,11 @@ void initialize(VkCommandBuffer cmd) {
         .transform = Transform{
             .position = {0.0f, -0.5f, 0.0f},
         },
-        .albedo_color = veekay::vec3{1.0f, 0.5f, 0.2f}
+        .material = Material{
+            .albedo = veekay::vec3{1.0f, 0.5f, 0.2f},
+            .specular = veekay::vec3{1.0f, 1.0f, 1.0f},
+            .shininess = 32.0f,
+        }
     });
 
     models.emplace_back(Model{
@@ -657,25 +814,34 @@ void initialize(VkCommandBuffer cmd) {
             .position = {2.0f, -0.5f, 0.0f},
             .scale = {0.6f, 0.6f, 0.6f}
         },
-        .albedo_color = veekay::vec3{0.2f, 0.6f, 1.0f}
+        .material = Material{
+            .albedo = veekay::vec3{0.2f, 0.6f, 1.0f},
+            .specular = veekay::vec3{1.0f, 1.0f, 1.0f},
+            .shininess = 32.0f,
+        }
     });
 }
 
 // NOTE: Destroy resources here, do not cause leaks in your program!
 void shutdown() {
-	VkDevice& device = veekay::app.vk_device;
+    VkDevice& device = veekay::app.vk_device;
 
-	vkDestroySampler(device, missing_texture_sampler, nullptr);
-	delete missing_texture;
+    vkDestroySampler(device, missing_texture_sampler, nullptr);
+    delete missing_texture;
 
-	delete cube_mesh.index_buffer;
-	delete cube_mesh.vertex_buffer;
+    delete cube_mesh.index_buffer;
+    delete cube_mesh.vertex_buffer;
 
-	delete plane_mesh.index_buffer;
-	delete plane_mesh.vertex_buffer;
+    delete plane_mesh.index_buffer;
+    delete plane_mesh.vertex_buffer;
+    
+    delete sphere_mesh.index_buffer;  // добавьте
+    delete sphere_mesh.vertex_buffer;  // добавьте
 
-	delete model_uniforms_buffer;
-	delete scene_uniforms_buffer;
+    delete spot_lights_buffer;  // добавьте
+    delete point_lights_buffer;  // добавьте
+    delete model_uniforms_buffer;
+    delete scene_uniforms_buffer;
 
 	vkDestroyDescriptorSetLayout(device, descriptor_set_layout, nullptr);
 	vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
@@ -734,9 +900,29 @@ void update(double time) {
     }
 
     float aspect_ratio = float(veekay::app.window_width) / float(veekay::app.window_height);
+    
+    // Инициализируем направленный свет
     SceneUniforms scene_uniforms{
         .view_projection = camera.view_projection(aspect_ratio),
+        .view_position = camera.position,
+        .directional_light = DirectionalLight{
+            .direction = {-0.2f, 1.0f, -0.3f},  // направление сверху
+            .ambient = {0.2f, 0.2f, 0.2f},
+            .diffuse = {0.5f, 0.5f, 0.5f},
+            .specular = {1.0f, 1.0f, 1.0f},
+        }
     };
+
+    // Обновляем буферы источников света
+    if (!point_lights.empty()) {
+        memcpy(point_lights_buffer->mapped_region, point_lights.data(), 
+               point_lights.size() * sizeof(PointLight));
+    }
+    
+    if (!spot_lights.empty()) {
+        memcpy(spot_lights_buffer->mapped_region, spot_lights.data(), 
+               spot_lights.size() * sizeof(SpotLight));
+    }
 
     std::vector<ModelUniforms> model_uniforms(models.size());
     for (size_t i = 0, n = models.size(); i < n; ++i) {
@@ -744,7 +930,9 @@ void update(double time) {
         ModelUniforms& uniforms = model_uniforms[i];
 
         uniforms.model = model.transform.matrix();
-        uniforms.albedo_color = model.albedo_color;
+        uniforms.albedo_color = model.material.albedo;
+        uniforms.shininess = model.material.shininess;
+        uniforms.specular_color = model.material.specular;
     }
 
     *(SceneUniforms*)scene_uniforms_buffer->mapped_region = scene_uniforms;
