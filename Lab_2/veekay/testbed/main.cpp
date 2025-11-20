@@ -820,6 +820,20 @@ void initialize(VkCommandBuffer cmd) {
             .shininess = 32.0f,
         }
     });
+
+    // Добавляем пол для демонстрации освещения
+    models.emplace_back(Model{
+        .mesh = plane_mesh,
+        .transform = Transform{
+            .position = {0.0f, 0.0f, 0.0f},
+            .scale = {2.0f, 1.0f, 2.0f}
+        },
+        .material = Material{
+            .albedo = veekay::vec3{0.8f, 0.8f, 0.8f},
+            .specular = veekay::vec3{0.5f, 0.5f, 0.5f},
+            .shininess = 16.0f,
+        }
+    });
 }
 
 // NOTE: Destroy resources here, do not cause leaks in your program!
@@ -853,42 +867,136 @@ void shutdown() {
 }
 
 void update(double time) {
-    ImGui::Begin("Controls:");
-    ImGui::Text("Static Cube + Orbiting Sphere");
-    ImGui::Text("Camera: WASDQZ keys");
-    ImGui::End();
-
-    if (!ImGui::IsWindowHovered()) {
-        using namespace veekay::input;
-
-        if (mouse::isButtonDown(mouse::Button::left)) {
-            auto view = camera.view();
-
-            veekay::vec3 right = {1.0f, 0.0f, 0.0f};
-            veekay::vec3 up = {0.0f, -1.0f, 0.0f};
-            veekay::vec3 front = {0.0f, 0.0f, 1.0f};
-
-            if (keyboard::isKeyDown(keyboard::Key::w))
-                camera.position += front * 0.1f;
-
-            if (keyboard::isKeyDown(keyboard::Key::s))
-                camera.position -= front * 0.1f;
-
-            if (keyboard::isKeyDown(keyboard::Key::d))
-                camera.position += right * 0.1f;
-
-            if (keyboard::isKeyDown(keyboard::Key::a))
-                camera.position -= right * 0.1f;
-
-            if (keyboard::isKeyDown(keyboard::Key::q))
-                camera.position += up * 0.1f;
-
-            if (keyboard::isKeyDown(keyboard::Key::z))
-                camera.position -= up * 0.1f;
+    ImGui::Begin("Lighting Controls");
+    
+    // Управление направленным светом
+    if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static float dir_direction[3] = {-0.2f, 1.0f, -0.3f};
+        static float dir_ambient[3] = {0.2f, 0.2f, 0.2f};
+        static float dir_diffuse[3] = {0.5f, 0.5f, 0.5f};
+        static float dir_specular[3] = {1.0f, 1.0f, 1.0f};
+        
+        ImGui::DragFloat3("Direction", dir_direction, 0.01f, -1.0f, 1.0f);
+        ImGui::ColorEdit3("Ambient", dir_ambient);
+        ImGui::ColorEdit3("Diffuse", dir_diffuse);
+        ImGui::ColorEdit3("Specular", dir_specular);
+    }
+    
+    // Управление точечными источниками
+    if (ImGui::CollapsingHeader("Point Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+        for (size_t i = 0; i < point_lights.size(); ++i) {
+            ImGui::PushID(int(i));
+            if (ImGui::TreeNode(("Point Light " + std::to_string(i)).c_str())) {
+                ImGui::DragFloat3("Position", &point_lights[i].position.x, 0.1f);
+                ImGui::ColorEdit3("Ambient", &point_lights[i].ambient.x);
+                ImGui::ColorEdit3("Diffuse", &point_lights[i].diffuse.x);
+                ImGui::ColorEdit3("Specular", &point_lights[i].specular.x);
+                ImGui::DragFloat("Constant", &point_lights[i].constant, 0.01f, 0.0f, 10.0f);
+                ImGui::DragFloat("Linear", &point_lights[i].linear, 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("Quadratic", &point_lights[i].quadratic, 0.001f, 0.0f, 1.0f);
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+        if (ImGui::Button("Add Point Light") && point_lights.size() < max_point_lights) {
+            point_lights.push_back(PointLight{
+                .position = {0.0f, -2.0f, 0.0f},
+                .ambient = {0.1f, 0.1f, 0.1f},
+                .diffuse = {1.0f, 1.0f, 1.0f},
+                .specular = {1.0f, 1.0f, 1.0f},
+                .constant = 1.0f,
+                .linear = 0.09f,
+                .quadratic = 0.032f,
+            });
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Remove Point Light") && !point_lights.empty()) {
+            point_lights.pop_back();
         }
     }
+    
+    // Управление прожекторами
+    if (ImGui::CollapsingHeader("Spot Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+        for (size_t i = 0; i < spot_lights.size(); ++i) {
+            ImGui::PushID(int(100 + i));
+            if (ImGui::TreeNode(("Spot Light " + std::to_string(i)).c_str())) {
+                ImGui::DragFloat3("Position", &spot_lights[i].position.x, 0.1f);
+                ImGui::DragFloat3("Direction", &spot_lights[i].direction.x, 0.01f, -1.0f, 1.0f);
+                ImGui::ColorEdit3("Ambient", &spot_lights[i].ambient.x);
+                ImGui::ColorEdit3("Diffuse", &spot_lights[i].diffuse.x);
+                ImGui::ColorEdit3("Specular", &spot_lights[i].specular.x);
+                ImGui::DragFloat("Constant", &spot_lights[i].constant, 0.01f, 0.0f, 10.0f);
+                ImGui::DragFloat("Linear", &spot_lights[i].linear, 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("Quadratic", &spot_lights[i].quadratic, 0.001f, 0.0f, 1.0f);
+                
+                float inner_angle = acosf(spot_lights[i].cutOff) * 180.0f / M_PI;
+                float outer_angle = acosf(spot_lights[i].outerCutOff) * 180.0f / M_PI;
+                
+                if (ImGui::DragFloat("Inner Angle", &inner_angle, 0.5f, 0.0f, 90.0f)) {
+                    spot_lights[i].cutOff = cosf(toRadians(inner_angle));
+                }
+                if (ImGui::DragFloat("Outer Angle", &outer_angle, 0.5f, 0.0f, 90.0f)) {
+                    spot_lights[i].outerCutOff = cosf(toRadians(outer_angle));
+                }
+                
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+        if (ImGui::Button("Add Spot Light") && spot_lights.size() < max_spot_lights) {
+            spot_lights.push_back(SpotLight{
+                .position = {0.0f, -3.0f, 0.0f},
+                .direction = {0.0f, 1.0f, 0.0f},
+                .ambient = {0.05f, 0.05f, 0.05f},
+                .diffuse = {1.0f, 1.0f, 1.0f},
+                .specular = {1.0f, 1.0f, 1.0f},
+                .constant = 1.0f,
+                .linear = 0.09f,
+                .quadratic = 0.032f,
+                .cutOff = cosf(toRadians(12.5f)),
+                .outerCutOff = cosf(toRadians(17.5f)),
+            });
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Remove Spot Light") && !spot_lights.empty()) {
+            spot_lights.pop_back();
+        }
+    }
+    
+    ImGui::End();
+    
+    // Остальной код update() без изменений...
+    ImGui::Begin("Camera Controls");
+    ImGui::Text("Movement: WASD, Q/Z (Up/Down)");
+    ImGui::Text("Position: %.2f, %.2f, %.2f", camera.position.x, camera.position.y, camera.position.z);
+    ImGui::End();
 
-    // Animate sphere orbit around cube (centered at origin)
+    // Управление камерой
+    using namespace veekay::input;
+
+    veekay::vec3 right = {1.0f, 0.0f, 0.0f};
+    veekay::vec3 up = {0.0f, -1.0f, 0.0f};
+    veekay::vec3 front = {0.0f, 0.0f, 1.0f};
+
+    if (keyboard::isKeyDown(keyboard::Key::w))
+        camera.position += front * 0.1f;
+
+    if (keyboard::isKeyDown(keyboard::Key::s))
+        camera.position -= front * 0.1f;
+
+    if (keyboard::isKeyDown(keyboard::Key::d))
+        camera.position += right * 0.1f;
+
+    if (keyboard::isKeyDown(keyboard::Key::a))
+        camera.position -= right * 0.1f;
+
+    if (keyboard::isKeyDown(keyboard::Key::q))
+        camera.position += up * 0.1f;
+
+    if (keyboard::isKeyDown(keyboard::Key::z))
+        camera.position -= up * 0.1f;
+
+    // Анимация сферы
     const float orbit_radius = 2.0f;
     const float orbit_speed = 1.0f;
     if (models.size() >= 2) {
@@ -901,15 +1009,20 @@ void update(double time) {
 
     float aspect_ratio = float(veekay::app.window_width) / float(veekay::app.window_height);
     
-    // Инициализируем направленный свет
+    // Используем значения из UI для направленного света
+    static float dir_direction[3] = {-0.2f, 1.0f, -0.3f};
+    static float dir_ambient[3] = {0.2f, 0.2f, 0.2f};
+    static float dir_diffuse[3] = {0.5f, 0.5f, 0.5f};
+    static float dir_specular[3] = {1.0f, 1.0f, 1.0f};
+    
     SceneUniforms scene_uniforms{
         .view_projection = camera.view_projection(aspect_ratio),
         .view_position = camera.position,
         .directional_light = DirectionalLight{
-            .direction = {-0.2f, 1.0f, -0.3f},  // направление сверху
-            .ambient = {0.2f, 0.2f, 0.2f},
-            .diffuse = {0.5f, 0.5f, 0.5f},
-            .specular = {1.0f, 1.0f, 1.0f},
+            .direction = {dir_direction[0], dir_direction[1], dir_direction[2]},
+            .ambient = {dir_ambient[0], dir_ambient[1], dir_ambient[2]},
+            .diffuse = {dir_diffuse[0], dir_diffuse[1], dir_diffuse[2]},
+            .specular = {dir_specular[0], dir_specular[1], dir_specular[2]},
         }
     };
 
