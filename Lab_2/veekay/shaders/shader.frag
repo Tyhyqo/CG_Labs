@@ -93,7 +93,7 @@ vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 view_dir) {
 vec3 calcPointLight(PointLight light, vec3 normal, vec3 frag_pos, vec3 view_dir) {
     vec3 light_dir = normalize(light.position - frag_pos);
     
-    // Attenuation
+    // Attenuation (затухание по закону обратных квадратов)
     float distance = length(light.position - frag_pos);
     float attenuation = 1.0 / (light.constant + light.linear * distance + 
                                light.quadratic * (distance * distance));
@@ -121,12 +121,12 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 frag_pos, vec3 view_dir)
 vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir) {
     vec3 light_dir = normalize(light.position - frag_pos);
     
-    // Spotlight intensity (smooth edges)
+    // Spotlight intensity (smooth edges - гладкие края)
     float theta = dot(light_dir, normalize(-light.direction));
     float epsilon = light.cutOff - light.outerCutOff;
     float intensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
     
-    // Attenuation
+    // Attenuation (затухание по закону обратных квадратов)
     float distance = length(light.position - frag_pos);
     float attenuation = 1.0 / (light.constant + light.linear * distance + 
                                light.quadratic * (distance * distance));
@@ -151,18 +151,19 @@ vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir) {
 }
 
 void main() {
+    // Нормализуем нормаль (может прийти ненормализованной после интерполяции)
     vec3 normal = normalize(frag_normal);
     vec3 view_dir = normalize(scene.view_position - frag_position);
     
     // Directional light
     vec3 result = calcDirectionalLight(scene.directional_light, normal, view_dir);
     
-    // Point lights (пока считаем первый)
+    // Point lights (обрабатываем ПЕРВЫЙ)
     if (point_lights.length() > 0) {
         result += calcPointLight(point_lights[0], normal, frag_position, view_dir);
     }
     
-    // Spot lights (пока считаем первый)
+    // Spot lights (обрабатываем ПЕРВЫЙ)
     if (spot_lights.length() > 0) {
         result += calcSpotLight(spot_lights[0], normal, frag_position, view_dir);
     }

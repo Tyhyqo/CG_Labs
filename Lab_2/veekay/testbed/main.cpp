@@ -112,31 +112,35 @@ struct Model {
 };
 
 struct Camera {
-	constexpr static float default_fov = 60.0f;
-	constexpr static float default_near_plane = 0.01f;
-	constexpr static float default_far_plane = 100.0f;
+    constexpr static float default_fov = 60.0f;
+    constexpr static float default_near_plane = 0.01f;
+    constexpr static float default_far_plane = 100.0f;
 
-	veekay::vec3 position = {};
-	veekay::vec3 rotation = {};
+    veekay::vec3 position = {};
+    veekay::vec3 up = {0.0f, -1.0f, 0.0f};  // Y-down система!
 
-	float fov = default_fov;
-	float near_plane = default_near_plane;
-	float far_plane = default_far_plane;
+    float yaw = 0.0f;
+    float pitch = 0.0f;
 
-	// NOTE: View matrix of camera (inverse of a transform)
-	veekay::mat4 view() const;
+    float fov = default_fov;
+    float near_plane = default_near_plane;
+    float far_plane = default_far_plane;
 
-	// NOTE: View and projection composition
-	veekay::mat4 view_projection(float aspect_ratio) const;
+    veekay::mat4 view() const;
+    veekay::mat4 view_projection(float aspect_ratio) const;
+    veekay::vec3 front() const;
+    veekay::vec3 right() const;
 };
 
 // NOTE: Scene objects
 inline namespace {
-	Camera camera{
-		.position = {0.0f, -0.5f, -3.0f}
-	};
+    Camera camera{
+        .position = {0.0f, -3.0f, 3.0f},  // Y отрицательный = вверх в мире
+        .yaw = 0.0f,      // смотрим в сторону +Z
+        .pitch = -20.0f,  // немного вниз
+    };
 
-	std::vector<Model> models;
+    std::vector<Model> models;
 }
 
 // NOTE: Vulkan objects
@@ -187,12 +191,81 @@ veekay::mat4 Transform::matrix() const {
 	return t;
 }
 
+veekay::vec3 Camera::front() const {
+    float yaw_rad = toRadians(yaw);
+    float pitch_rad = toRadians(pitch);
+    
+    veekay::vec3 direction;
+    direction.x = cosf(pitch_rad) * sinf(yaw_rad);
+    direction.y = -sinf(pitch_rad);  // инвертируем для Y-down
+    direction.z = cosf(pitch_rad) * cosf(yaw_rad);
+    
+    // Нормализуем вручную
+    float length = sqrtf(direction.x * direction.x + 
+                        direction.y * direction.y + 
+                        direction.z * direction.z);
+    if (length > 0.0f) {
+        direction.x /= length;
+        direction.y /= length;
+        direction.z /= length;
+    }
+    
+    return direction;
+}
+
+veekay::vec3 Camera::right() const {
+    veekay::vec3 f = front();
+    veekay::vec3 world_up = {0.0f, -1.0f, 0.0f};  // Y-down система!
+    
+    // Вычисляем cross product: world_up × f
+    veekay::vec3 right_vec;
+    right_vec.x = world_up.y * f.z - world_up.z * f.y;
+    right_vec.y = world_up.z * f.x - world_up.x * f.z;
+    right_vec.z = world_up.x * f.y - world_up.y * f.x;
+    
+    // Нормализуем
+    float length = sqrtf(right_vec.x * right_vec.x + 
+                        right_vec.y * right_vec.y + 
+                        right_vec.z * right_vec.z);
+    if (length > 0.0f) {
+        right_vec.x /= length;
+        right_vec.y /= length;
+        right_vec.z /= length;
+    }
+    
+    return right_vec;
+}
+
 veekay::mat4 Camera::view() const {
-	// TODO: Rotation
+    veekay::vec3 f = front();
+    veekay::vec3 r = right();
+    
+    // Вычисляем up = r × f
+    veekay::vec3 u;
+    u.x = r.y * f.z - r.z * f.y;
+    u.y = r.z * f.x - r.x * f.z;
+    u.z = r.x * f.y - r.y * f.x;
 
-	auto t = veekay::mat4::translation(-position);
-
-	return t;
+    veekay::mat4 result = veekay::mat4::identity();
+    
+    result.elements[0][0] = r.x;
+    result.elements[1][0] = r.y;
+    result.elements[2][0] = r.z;
+    
+    result.elements[0][1] = u.x;
+    result.elements[1][1] = u.y;
+    result.elements[2][1] = u.z;
+    
+    result.elements[0][2] = -f.x;
+    result.elements[1][2] = -f.y;
+    result.elements[2][2] = -f.z;
+    
+    // Вычисляем dot product вручную
+    result.elements[3][0] = -(r.x * position.x + r.y * position.y + r.z * position.z);
+    result.elements[3][1] = -(u.x * position.x + u.y * position.y + u.z * position.z);
+    result.elements[3][2] = (f.x * position.x + f.y * position.y + f.z * position.z);
+    
+    return result;
 }
 
 veekay::mat4 Camera::view_projection(float aspect_ratio) const {
@@ -537,7 +610,7 @@ void initialize(VkCommandBuffer cmd) {
     // Инициализация источников света (пример)
     point_lights.clear();
     point_lights.push_back(PointLight{
-        .position = {2.0f, -2.0f, 2.0f},
+        .position = {2.0f, -2.0f, 2.0f},  // Y отрицательный = вверх
         .ambient = {0.1f, 0.1f, 0.1f},
         .diffuse = {1.0f, 0.8f, 0.6f},
         .specular = {1.0f, 1.0f, 1.0f},
@@ -548,16 +621,16 @@ void initialize(VkCommandBuffer cmd) {
 
     spot_lights.clear();
     spot_lights.push_back(SpotLight{
-        .position = {0.0f, -3.0f, 0.0f},
-        .direction = {0.0f, 1.0f, 0.0f},
-        .ambient = {0.05f, 0.05f, 0.05f},
-        .diffuse = {1.0f, 1.0f, 1.0f},
-        .specular = {1.0f, 1.0f, 1.0f},
+        .position = {0.0f, -3.0f, 0.0f},  // Y отрицательный = вверх
+        .direction = {0.0f, 1.0f, 0.0f},  // направлен вниз (к Y=0)
+        .ambient = {0.1f, 0.1f, 0.1f},    // увеличили ambient
+        .diffuse = {0.8f, 0.8f, 0.8f},    // уменьшили diffuse
+        .specular = {0.5f, 0.5f, 0.5f},   // уменьшили specular
         .constant = 1.0f,
-        .linear = 0.09f,
-        .quadratic = 0.032f,
-        .cutOff = cosf(toRadians(12.5f)),
-        .outerCutOff = cosf(toRadians(17.5f)),
+        .linear = 0.045f,                 // изменили затухание
+        .quadratic = 0.0075f,             // изменили затухание
+        .cutOff = cosf(toRadians(25.0f)),      // расширили внутренний угол
+        .outerCutOff = cosf(toRadians(35.0f)), // расширили внешний угол
     });
 
     // NOTE: This texture and sampler is used when texture could not be loaded
@@ -653,33 +726,38 @@ void initialize(VkCommandBuffer cmd) {
 	}
 
 	// NOTE: Plane mesh initialization
-	{
-		// (v0)------(v1)
-		//  |  \       |
-		//  |   `--,   |
-		//  |       \  |
-		// (v3)------(v2)
-		std::vector<Vertex> vertices = {
-			{{-5.0f, 0.0f, 5.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
-			{{5.0f, 0.0f, 5.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
-			{{5.0f, 0.0f, -5.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
-			{{-5.0f, 0.0f, -5.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
-		};
+    {
+        std::vector<Vertex> vertices = {
+            // Верхняя сторона (нормали вверх для Y-down системы)
+            {{-5.0f, 0.0f, -5.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+            {{5.0f, 0.0f, -5.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+            {{5.0f, 0.0f, 5.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+            {{-5.0f, 0.0f, 5.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+            
+            // Нижняя сторона (нормали вниз)
+            {{-5.0f, 0.0f, -5.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+            {{5.0f, 0.0f, -5.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+            {{5.0f, 0.0f, 5.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
+            {{-5.0f, 0.0f, 5.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+        };
 
-		std::vector<uint32_t> indices = {
-			0, 1, 2, 2, 3, 0
-		};
+        std::vector<uint32_t> indices = {
+            // Верхняя сторона (видна снизу)
+            0, 1, 2, 2, 3, 0,
+            // Нижняя сторона (видна сверху) - обратный порядок вершин
+            4, 6, 5, 6, 4, 7
+        };
 
-		plane_mesh.vertex_buffer = new veekay::graphics::Buffer(
-			vertices.size() * sizeof(Vertex), vertices.data(),
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        plane_mesh.vertex_buffer = new veekay::graphics::Buffer(
+            vertices.size() * sizeof(Vertex), vertices.data(),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
-		plane_mesh.index_buffer = new veekay::graphics::Buffer(
-			indices.size() * sizeof(uint32_t), indices.data(),
-			VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        plane_mesh.index_buffer = new veekay::graphics::Buffer(
+            indices.size() * sizeof(uint32_t), indices.data(),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
-		plane_mesh.indices = uint32_t(indices.size());
-	}
+        plane_mesh.indices = uint32_t(indices.size());
+    }
 
 	// NOTE: Cube mesh initialization
 	{
@@ -738,8 +816,8 @@ void initialize(VkCommandBuffer cmd) {
 	// NOTE: Sphere mesh initialization (latitude-longitude parametrization)
     {
         const float radius = 0.5f;
-        const int sectors = 32; // longitude divisions
-        const int stacks = 16;  // latitude divisions
+        const int sectors = 32;
+        const int stacks = 16;
 
         std::vector<Vertex> verts;
         std::vector<uint32_t> inds;
@@ -756,14 +834,23 @@ void initialize(VkCommandBuffer cmd) {
                 float y = xy * sinf(sector_angle);
 
                 veekay::vec3 pos = { x, z, y };
-                veekay::vec3 normal = pos; // normalized in shader
+                
+                // Нормализуем нормаль
+                veekay::vec3 normal = pos;
+                float length = sqrtf(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+                if (length > 0.0f) {
+                    normal.x /= length;
+                    normal.y /= length;
+                    normal.z /= length;
+                }
+                
                 veekay::vec2 uv = { float(j) / float(sectors), float(i) / float(stacks) };
 
                 verts.push_back({ pos, normal, uv });
             }
         }
 
-        // Generate indices
+        // Generate indices (без изменений)
         for (int i = 0; i < stacks; ++i) {
             int k1 = i * (sectors + 1);
             int k2 = k1 + sectors + 1;
@@ -799,7 +886,7 @@ void initialize(VkCommandBuffer cmd) {
     models.emplace_back(Model{
         .mesh = cube_mesh,
         .transform = Transform{
-            .position = {0.0f, -0.5f, 0.0f},
+            .position = {0.0f, -0.5f, 0.0f},  // Y отрицательный = вверх над полом
         },
         .material = Material{
             .albedo = veekay::vec3{1.0f, 0.5f, 0.2f},
@@ -811,7 +898,7 @@ void initialize(VkCommandBuffer cmd) {
     models.emplace_back(Model{
         .mesh = sphere_mesh,
         .transform = Transform{
-            .position = {2.0f, -0.5f, 0.0f},
+            .position = {2.0f, -0.5f, 0.0f},  // Y отрицательный = вверх над полом
             .scale = {0.6f, 0.6f, 0.6f}
         },
         .material = Material{
@@ -821,12 +908,12 @@ void initialize(VkCommandBuffer cmd) {
         }
     });
 
-    // Добавляем пол для демонстрации освещения
+    // Пол на уровне Y = 0
     models.emplace_back(Model{
         .mesh = plane_mesh,
         .transform = Transform{
             .position = {0.0f, 0.0f, 0.0f},
-            .scale = {2.0f, 1.0f, 2.0f}
+            .scale = {1.0f, 1.0f, 1.0f}
         },
         .material = Material{
             .albedo = veekay::vec3{0.8f, 0.8f, 0.8f},
@@ -867,15 +954,17 @@ void shutdown() {
 }
 
 void update(double time) {
+    // Вынесите static переменные в САМОЕ начало функции, ДО всех ImGui блоков:
+    static float dir_direction[3] = {-0.2f, 1.0f, -0.3f};
+    static float dir_ambient[3] = {0.2f, 0.2f, 0.2f};
+    static float dir_diffuse[3] = {0.5f, 0.5f, 0.5f};
+    static float dir_specular[3] = {1.0f, 1.0f, 1.0f};
+    
     ImGui::Begin("Lighting Controls");
     
     // Управление направленным светом
     if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-        static float dir_direction[3] = {-0.2f, 1.0f, -0.3f};
-        static float dir_ambient[3] = {0.2f, 0.2f, 0.2f};
-        static float dir_diffuse[3] = {0.5f, 0.5f, 0.5f};
-        static float dir_specular[3] = {1.0f, 1.0f, 1.0f};
-        
+        // Уберите static отсюда:
         ImGui::DragFloat3("Direction", dir_direction, 0.01f, -1.0f, 1.0f);
         ImGui::ColorEdit3("Ambient", dir_ambient);
         ImGui::ColorEdit3("Diffuse", dir_diffuse);
@@ -965,36 +1054,83 @@ void update(double time) {
     
     ImGui::End();
     
-    // Остальной код update() без изменений...
     ImGui::Begin("Camera Controls");
-    ImGui::Text("Movement: WASD, Q/Z (Up/Down)");
-    ImGui::Text("Position: %.2f, %.2f, %.2f", camera.position.x, camera.position.y, camera.position.z);
+    ImGui::Text("Movement: WASD");
+    ImGui::Text("Up/Down: Q/E");
+    ImGui::Text("Rotate: Arrow Keys");
+    ImGui::Separator();
+    ImGui::Text("Position: (%.2f, %.2f, %.2f)", camera.position.x, camera.position.y, camera.position.z);
+    ImGui::Text("Yaw: %.1f, Pitch: %.1f", camera.yaw, camera.pitch);
+    ImGui::End();
+
+	ImGui::Begin("Materials");
+    
+    for (size_t i = 0; i < models.size(); ++i) {
+        ImGui::PushID(int(i));
+        
+        std::string name;
+        if (i == 0) name = "Cube";
+        else if (i == 1) name = "Sphere";
+        else if (i == 2) name = "Floor";
+        else name = "Object " + std::to_string(i);
+        
+        if (ImGui::CollapsingHeader(name.c_str())) {
+            ImGui::ColorEdit3("Albedo", &models[i].material.albedo.x);
+            ImGui::ColorEdit3("Specular", &models[i].material.specular.x);
+            ImGui::SliderFloat("Shininess", &models[i].material.shininess, 1.0f, 256.0f);
+        }
+        
+        ImGui::PopID();
+    }
+    
     ImGui::End();
 
     // Управление камерой
     using namespace veekay::input;
 
-    veekay::vec3 right = {1.0f, 0.0f, 0.0f};
-    veekay::vec3 up = {0.0f, -1.0f, 0.0f};
-    veekay::vec3 front = {0.0f, 0.0f, 1.0f};
+    const float move_speed = 0.1f;
+    const float rotate_speed = 2.0f;
 
+    veekay::vec3 camera_front = camera.front();
+    veekay::vec3 camera_right = camera.right();
+    veekay::vec3 camera_up = {0.0f, -1.0f, 0.0f};  // Y-down система!
+
+    // Движение WASD
     if (keyboard::isKeyDown(keyboard::Key::w))
-        camera.position += front * 0.1f;
+        camera.position -= camera_front * move_speed;
 
     if (keyboard::isKeyDown(keyboard::Key::s))
-        camera.position -= front * 0.1f;
+        camera.position += camera_front * move_speed;
 
     if (keyboard::isKeyDown(keyboard::Key::d))
-        camera.position += right * 0.1f;
+        camera.position += camera_right * move_speed;
 
     if (keyboard::isKeyDown(keyboard::Key::a))
-        camera.position -= right * 0.1f;
+        camera.position -= camera_right * move_speed;
 
+    // Используем Q и E вместо Space и Shift
     if (keyboard::isKeyDown(keyboard::Key::q))
-        camera.position += up * 0.1f;
+        camera.position += camera_up * move_speed;
 
-    if (keyboard::isKeyDown(keyboard::Key::z))
-        camera.position -= up * 0.1f;
+    if (keyboard::isKeyDown(keyboard::Key::e))
+        camera.position -= camera_up * move_speed;
+
+    // Поворот стрелками
+    if (keyboard::isKeyDown(keyboard::Key::left))
+        camera.yaw -= rotate_speed;
+
+    if (keyboard::isKeyDown(keyboard::Key::right))
+        camera.yaw += rotate_speed;
+
+    if (keyboard::isKeyDown(keyboard::Key::up))
+        camera.pitch -= rotate_speed;
+
+    if (keyboard::isKeyDown(keyboard::Key::down))
+        camera.pitch += rotate_speed;
+
+    // Ограничение pitch чтобы не переворачивать камеру
+    if (camera.pitch > 89.0f) camera.pitch = 89.0f;
+    if (camera.pitch < -89.0f) camera.pitch = -89.0f;
 
     // Анимация сферы
     const float orbit_radius = 2.0f;
@@ -1004,16 +1140,16 @@ void update(double time) {
         float angle = float(time * orbit_speed);
         float x = orbit_radius * cosf(angle);
         float z = orbit_radius * sinf(angle);
-        sphere.transform.position = { x, -0.5f, z };
+        sphere.transform.position = { x, -0.5f, z };  // Y отрицательный = вверх
     }
 
     float aspect_ratio = float(veekay::app.window_width) / float(veekay::app.window_height);
     
-    // Используем значения из UI для направленного света
-    static float dir_direction[3] = {-0.2f, 1.0f, -0.3f};
-    static float dir_ambient[3] = {0.2f, 0.2f, 0.2f};
-    static float dir_diffuse[3] = {0.5f, 0.5f, 0.5f};
-    static float dir_specular[3] = {1.0f, 1.0f, 1.0f};
+    // УДАЛИТЕ ЭТИ 4 СТРОКИ (они дублируют переменные из начала функции):
+    // static float dir_direction[3] = {-0.2f, 1.0f, -0.3f};
+    // static float dir_ambient[3] = {0.2f, 0.2f, 0.2f};
+    // static float dir_diffuse[3] = {0.5f, 0.5f, 0.5f};
+    // static float dir_specular[3] = {1.0f, 1.0f, 1.0f};
     
     SceneUniforms scene_uniforms{
         .view_projection = camera.view_projection(aspect_ratio),
