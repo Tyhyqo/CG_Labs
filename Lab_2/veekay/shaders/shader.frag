@@ -60,6 +60,10 @@ layout(binding = 0) uniform SceneUniforms {
     vec3 view_position;
     float _pad0;
     DirectionalLight directional_light;
+    uint point_light_count;
+    uint spot_light_count;
+    float _pad1;
+    float _pad2;
 } scene;
 
 layout(binding = 2) readonly buffer PointLightsBuffer {
@@ -151,21 +155,20 @@ vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir) {
 }
 
 void main() {
-    // Нормализуем нормаль (может прийти ненормализованной после интерполяции)
     vec3 normal = normalize(frag_normal);
     vec3 view_dir = normalize(scene.view_position - frag_position);
     
     // Directional light
     vec3 result = calcDirectionalLight(scene.directional_light, normal, view_dir);
     
-    // Point lights (обрабатываем ПЕРВЫЙ)
-    if (point_lights.length() > 0) {
-        result += calcPointLight(point_lights[0], normal, frag_position, view_dir);
+    // Point lights - используем СЧЕТЧИК вместо .length()
+    for (uint i = 0u; i < scene.point_light_count; ++i) {
+        result += calcPointLight(point_lights[i], normal, frag_position, view_dir);
     }
     
-    // Spot lights (обрабатываем ПЕРВЫЙ)
-    if (spot_lights.length() > 0) {
-        result += calcSpotLight(spot_lights[0], normal, frag_position, view_dir);
+    // Spot lights - используем СЧЕТЧИК вместо .length()
+    for (uint i = 0u; i < scene.spot_light_count; ++i) {
+        result += calcSpotLight(spot_lights[i], normal, frag_position, view_dir);
     }
     
     out_color = vec4(result, 1.0);

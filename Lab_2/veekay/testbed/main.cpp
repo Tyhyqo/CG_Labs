@@ -70,10 +70,13 @@ struct SpotLight {
 };
 
 struct SceneUniforms {
-	veekay::mat4 view_projection;
-	veekay::vec3 view_position;  // позиция камеры для specular
-	float _pad0;
-	DirectionalLight directional_light;
+    veekay::mat4 view_projection;
+    veekay::vec3 view_position;
+    float _pad0;
+    DirectionalLight directional_light;
+    uint32_t point_light_count;   // ДОБАВЛЕНО
+    uint32_t spot_light_count;    // ДОБАВЛЕНО
+    float _pad1[2];               // ДОБАВЛЕНО для выравнивания
 };
 
 struct ModelUniforms {
@@ -117,19 +120,24 @@ struct Camera {
     constexpr static float default_far_plane = 100.0f;
 
     veekay::vec3 position = {};
-    veekay::vec3 up = {0.0f, -1.0f, 0.0f};  // Y-down система!
-
-    float yaw = 0.0f;
-    float pitch = 0.0f;
+    // ЗАМЕНИТЬ эти две строки:
+    // veekay::vec3 target = {0.0f, 0.0f, 0.0f};
+    // veekay::vec3 up = {0.0f, -1.0f, 0.0f};
+    
+    // НА эти:
+    float yaw = 0.0f;    // поворот вокруг вертикальной оси
+    float pitch = 0.0f;  // наклон вверх/вниз
 
     float fov = default_fov;
     float near_plane = default_near_plane;
     float far_plane = default_far_plane;
 
-    veekay::mat4 view() const;
-    veekay::mat4 view_projection(float aspect_ratio) const;
+    // Добавить методы:
     veekay::vec3 front() const;
     veekay::vec3 right() const;
+
+    veekay::mat4 view() const;
+    veekay::mat4 view_projection(float aspect_ratio) const;
 };
 
 // NOTE: Scene objects
@@ -175,8 +183,8 @@ inline namespace {
 	veekay::graphics::Texture* missing_texture;
 	VkSampler missing_texture_sampler;
 
-	veekay::graphics::Texture* texture;
-	VkSampler texture_sampler;
+	// veekay::graphics::Texture* texture;
+	// VkSampler texture_sampler;
 }
 
 float toRadians(float degrees) {
@@ -184,11 +192,49 @@ float toRadians(float degrees) {
 }
 
 veekay::mat4 Transform::matrix() const {
-	// TODO: Scaling and rotation
-
-	auto t = veekay::mat4::translation(position);
-
-	return t;
+    // ЗАМЕНИТЬ текущую реализацию:
+    // auto t = veekay::mat4::translation(position);
+    // return t;
+    
+    // НА эту:
+    
+    // Матрица масштабирования
+    veekay::mat4 s = veekay::mat4::identity();
+    s.elements[0][0] = scale.x;
+    s.elements[1][1] = scale.y;
+    s.elements[2][2] = scale.z;
+    
+    // Матрицы вращения (углы Эйлера: X -> Y -> Z)
+    float rx = toRadians(rotation.x);
+    float ry = toRadians(rotation.y);
+    float rz = toRadians(rotation.z);
+    
+    // Вращение вокруг X
+    veekay::mat4 rot_x = veekay::mat4::identity();
+    rot_x.elements[1][1] = cosf(rx);
+    rot_x.elements[1][2] = -sinf(rx);
+    rot_x.elements[2][1] = sinf(rx);
+    rot_x.elements[2][2] = cosf(rx);
+    
+    // Вращение вокруг Y
+    veekay::mat4 rot_y = veekay::mat4::identity();
+    rot_y.elements[0][0] = cosf(ry);
+    rot_y.elements[0][2] = sinf(ry);
+    rot_y.elements[2][0] = -sinf(ry);
+    rot_y.elements[2][2] = cosf(ry);
+    
+    // Вращение вокруг Z
+    veekay::mat4 rot_z = veekay::mat4::identity();
+    rot_z.elements[0][0] = cosf(rz);
+    rot_z.elements[0][1] = -sinf(rz);
+    rot_z.elements[1][0] = sinf(rz);
+    rot_z.elements[1][1] = cosf(rz);
+    
+    // Матрица перемещения
+    veekay::mat4 t = veekay::mat4::translation(position);
+    
+    // Порядок: Translation * RotationZ * RotationY * RotationX * Scale
+    return t * (rot_z * (rot_y * (rot_x * s)));
 }
 
 veekay::vec3 Camera::front() const {
@@ -955,7 +1001,7 @@ void shutdown() {
 
 void update(double time) {
     // Вынесите static переменные в САМОЕ начало функции, ДО всех ImGui блоков:
-    static float dir_direction[3] = {-0.2f, 1.0f, -0.3f};
+    static float dir_direction[3] = {-0.2f, -1.0f, -0.3f};
     static float dir_ambient[3] = {0.2f, 0.2f, 0.2f};
     static float dir_diffuse[3] = {0.5f, 0.5f, 0.5f};
     static float dir_specular[3] = {1.0f, 1.0f, 1.0f};
@@ -1128,9 +1174,31 @@ void update(double time) {
     if (keyboard::isKeyDown(keyboard::Key::down))
         camera.pitch += rotate_speed;
 
-    // Ограничение pitch чтобы не переворачивать камеру
+	// Ограничение угла наклона
     if (camera.pitch > 89.0f) camera.pitch = 89.0f;
     if (camera.pitch < -89.0f) camera.pitch = -89.0f;
+
+	// ДОБАВЬТЕ управление мышью:
+    static bool mouse_control_active = false;
+    
+    // Включение/выключение управления мышью правой кнопкой
+    if (mouse::isButtonDown(mouse::Button::right)) {
+        if (!mouse_control_active) {
+            mouse_control_active = true;
+        }
+        
+        auto delta = mouse::cursorDelta();
+        const float mouse_sensitivity = 0.15f;
+        
+        camera.yaw += delta.x * mouse_sensitivity;
+        camera.pitch -= delta.y * mouse_sensitivity;  // инвертируем Y
+        
+        // Ограничиваем pitch
+        if (camera.pitch > 89.0f) camera.pitch = 89.0f;
+        if (camera.pitch < -89.0f) camera.pitch = -89.0f;
+    } else {
+        mouse_control_active = false;
+    }
 
     // Анимация сферы
     const float orbit_radius = 2.0f;
@@ -1159,7 +1227,9 @@ void update(double time) {
             .ambient = {dir_ambient[0], dir_ambient[1], dir_ambient[2]},
             .diffuse = {dir_diffuse[0], dir_diffuse[1], dir_diffuse[2]},
             .specular = {dir_specular[0], dir_specular[1], dir_specular[2]},
-        }
+        },
+        .point_light_count = static_cast<uint32_t>(point_lights.size()),
+        .spot_light_count = static_cast<uint32_t>(spot_lights.size()),
     };
 
     // Обновляем буферы источников света

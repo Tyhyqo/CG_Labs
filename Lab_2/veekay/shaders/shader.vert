@@ -7,7 +7,21 @@ layout(location = 2) in vec2 in_uv;
 layout(binding = 0) uniform SceneUniforms {
     mat4 view_projection;
     vec3 view_position;
-    // DirectionalLight данные
+    float _pad0;
+    // DirectionalLight (16 floats = 64 bytes)
+    vec3 dir_direction;
+    float _pad_dir0;
+    vec3 dir_ambient;
+    float _pad_dir1;
+    vec3 dir_diffuse;
+    float _pad_dir2;
+    vec3 dir_specular;
+    float _pad_dir3;
+    // Счетчики
+    uint point_light_count;
+    uint spot_light_count;
+    float _pad1;
+    float _pad2;
 } scene;
 
 layout(binding = 1) uniform ModelUniforms {
