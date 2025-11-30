@@ -248,6 +248,10 @@ void main() {
     float spec = pow(max(dot(normal, halfway_dir), 0.0), material.shininess);
     vec3 dir_specular = scene.directional_light.specular * spec * material.specular_color;
     
+    // В конце расчета specular
+    float fresnel = pow(1.0 - max(dot(normal, view_dir), 0.0), 5.0);
+    dir_specular *= (1.0 + fresnel * 2.0); // Усиливаем блики под углом
+
     vec3 result = dir_ambient + dir_diffuse + dir_specular;
     
     // ДОБАВЛЯЕМ освещение от всех точечных источников
