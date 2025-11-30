@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <algorithm>
 
 #include <veekay/veekay.hpp>
 
@@ -562,7 +563,7 @@ void initialize(VkCommandBuffer cmd) {
         VkPipelineDepthStencilStateCreateInfo depth_info{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
             .depthTestEnable = true,
-            .depthWriteEnable = true,
+            .depthWriteEnable = true,  // ИЗМЕНЕНО: отключаем запись глубины для прозрачности
             .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
         };
 
@@ -822,7 +823,7 @@ void initialize(VkCommandBuffer cmd) {
         
         // Загружаем текстуры для разных объектов
         // Поместите файлы в папку ./textures/
-        cube_texture = loadTexture(cmd, "./textures/cube.png");
+        cube_texture = loadTexture(cmd, "./textures/test.png");
         if (!cube_texture) cube_texture = missing_texture;
         cube_sampler = createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
         
@@ -1005,16 +1006,16 @@ void initialize(VkCommandBuffer cmd) {
     // ========================================================================
     models.clear();
 
-    // Статичный куб - СЕНО из Minecraft (желтоватый оттенок)
+    // Статичный куб - СТЕКЛО из Minecraft
     models.emplace_back(Model{
         .mesh = cube_mesh,
         .transform = Transform{
             .position = {0.0f, -0.5f, 0.0f},
         },
         .material = Material{
-            .albedo = veekay::vec3{1.0f, 1.0f, 0.9f},  // почти белый с легким желтым
-            .specular = veekay::vec3{0.3f, 0.3f, 0.3f}, // матовый (сено не блестит)
-            .shininess = 8.0f,                          // низкий блеск
+            .albedo = veekay::vec3{0.9f, 0.95f, 1.0f},   // ИЗМЕНЕНО: слегка голубоватый оттенок стекла
+            .specular = veekay::vec3{1.0f, 1.0f, 1.0f},  // ИЗМЕНЕНО: яркие белые блики (стекло отражает свет)
+            .shininess = 128.0f,                          // ИЗМЕНЕНО: очень острые блики (гладкая поверхность)
             .texture = cube_texture,
             .sampler = cube_sampler,
         }
@@ -1574,6 +1575,25 @@ void render(VkCommandBuffer cmd, VkFramebuffer framebuffer) {
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     VkDeviceSize zero_offset = 0;
 
+    // ИСПРАВЛЕНО: Создаем КОПИЮ массива моделей для сортировки
+    // Оригинальный массив models остается нетронутым для логики update()
+    std::vector<size_t> render_order(models.size());
+    for (size_t i = 0; i < models.size(); ++i) {
+        render_order[i] = i;
+    }
+    
+    // Сортируем ИНДЕКСЫ моделей, а не сами модели
+    std::sort(render_order.begin(), render_order.end(), 
+        [](size_t a, size_t b) {
+            veekay::vec3 delta_a = models[a].transform.position - camera.position;
+            float dist_sq_a = delta_a.x * delta_a.x + delta_a.y * delta_a.y + delta_a.z * delta_a.z;
+            
+            veekay::vec3 delta_b = models[b].transform.position - camera.position;
+            float dist_sq_b = delta_b.x * delta_b.x + delta_b.y * delta_b.y + delta_b.z * delta_b.z;
+            
+            return dist_sq_a > dist_sq_b; // от дальних к ближним
+        });
+
     // Кешируем текущие привязанные буферы для оптимизации
     VkBuffer current_vertex_buffer = VK_NULL_HANDLE;
     VkBuffer current_index_buffer = VK_NULL_HANDLE;
@@ -1582,8 +1602,9 @@ void render(VkCommandBuffer cmd, VkFramebuffer framebuffer) {
     const size_t model_uniorms_alignment =
         veekay::graphics::Buffer::structureAlignment(sizeof(ModelUniforms));
 
-    // Отрисовываем все модели в сцене
-    for (size_t i = 0, n = models.size(); i < n; ++i) {
+    // ИСПРАВЛЕНО: Проходим по отсортированным ИНДЕКСАМ
+    for (size_t idx = 0; idx < render_order.size(); ++idx) {
+        size_t i = render_order[idx];  // Истинный индекс модели
         const Model& model = models[i];
         const Mesh& mesh = model.mesh;
 
@@ -1601,7 +1622,7 @@ void render(VkCommandBuffer cmd, VkFramebuffer framebuffer) {
 
         // Привязываем descriptor set МАТЕРИАЛА (содержит уникальную текстуру)
         // offset указывает на нужный ModelUniforms в dynamic uniform buffer
-        uint32_t offset = i * model_uniorms_alignment;
+        uint32_t offset = i * model_uniorms_alignment;  // ВАЖНО: используем ИСТИННЫЙ индекс i
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout,
                             0, 1, &model.material.descriptor_set, 1, &offset);
 
@@ -1611,9 +1632,12 @@ void render(VkCommandBuffer cmd, VkFramebuffer framebuffer) {
 
     // Завершаем render pass
     vkCmdEndRenderPass(cmd);
-    
-    // Завершаем запись команд
-    vkEndCommandBuffer(cmd);
+
+    // ДОБАВЛЕНО: Завершаем запись команд в command buffer
+    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+        std::cerr << "Failed to end command buffer recording\n";
+        return;
+    }
 }
 
 } // namespace
