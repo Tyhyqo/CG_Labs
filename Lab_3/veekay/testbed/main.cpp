@@ -567,10 +567,17 @@ void initialize(VkCommandBuffer cmd) {
         };
 
         VkPipelineColorBlendAttachmentState attachment_info{
+            .blendEnable = VK_TRUE,  // ВКЛЮЧАЕМ смешивание
+            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            .colorBlendOp = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .alphaBlendOp = VK_BLEND_OP_ADD,
             .colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-                              VK_COLOR_COMPONENT_G_BIT |
-                              VK_COLOR_COMPONENT_B_BIT |
-                              VK_COLOR_COMPONENT_A_BIT,
+                            VK_COLOR_COMPONENT_G_BIT |
+                            VK_COLOR_COMPONENT_B_BIT |
+                            VK_COLOR_COMPONENT_A_BIT,
         };
 
         VkPipelineColorBlendStateCreateInfo blend_info{
@@ -998,22 +1005,22 @@ void initialize(VkCommandBuffer cmd) {
     // ========================================================================
     models.clear();
 
-    // Статичный куб (оранжевый)
+    // Статичный куб - СЕНО из Minecraft (желтоватый оттенок)
     models.emplace_back(Model{
         .mesh = cube_mesh,
         .transform = Transform{
             .position = {0.0f, -0.5f, 0.0f},
         },
         .material = Material{
-            .albedo = veekay::vec3{1.0f, 0.5f, 0.2f},
-            .specular = veekay::vec3{1.0f, 1.0f, 1.0f},
-            .shininess = 32.0f,
+            .albedo = veekay::vec3{1.0f, 1.0f, 0.9f},  // почти белый с легким желтым
+            .specular = veekay::vec3{0.3f, 0.3f, 0.3f}, // матовый (сено не блестит)
+            .shininess = 8.0f,                          // низкий блеск
             .texture = cube_texture,
             .sampler = cube_sampler,
         }
     });
 
-    // Анимированная сфера (синяя)
+    // Анимированная сфера - ДЕРЕВО из Minecraft
     models.emplace_back(Model{
         .mesh = sphere_mesh,
         .transform = Transform{
@@ -1021,15 +1028,15 @@ void initialize(VkCommandBuffer cmd) {
             .scale = {0.6f, 0.6f, 0.6f}
         },
         .material = Material{
-            .albedo = veekay::vec3{0.2f, 0.6f, 1.0f},
-            .specular = veekay::vec3{1.0f, 1.0f, 1.0f},
-            .shininess = 32.0f,
+            .albedo = veekay::vec3{1.0f, 1.0f, 1.0f}, // чистый белый (не тонируем текстуру)
+            .specular = veekay::vec3{0.2f, 0.2f, 0.2f}, // дерево почти не блестит
+            .shininess = 4.0f,  // очень матовый
             .texture = sphere_texture,
             .sampler = sphere_sampler,
         }
     });
 
-    // Пол (серый)
+    // Пол - ЗЕМЛЯ из Minecraft
     models.emplace_back(Model{
         .mesh = plane_mesh,
         .transform = Transform{
@@ -1037,9 +1044,9 @@ void initialize(VkCommandBuffer cmd) {
             .scale = {1.0f, 1.0f, 1.0f}
         },
         .material = Material{
-            .albedo = veekay::vec3{0.8f, 0.8f, 0.8f},
-            .specular = veekay::vec3{0.5f, 0.5f, 0.5f},
-            .shininess = 16.0f,
+            .albedo = veekay::vec3{0.95f, 0.9f, 0.85f}, // светло-коричневый оттенок для земли
+            .specular = veekay::vec3{0.1f, 0.1f, 0.1f}, // земля не блестит
+            .shininess = 2.0f,                           // максимально матовый
             .texture = floor_texture,
             .sampler = floor_sampler,
         }
