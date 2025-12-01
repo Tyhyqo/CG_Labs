@@ -743,7 +743,7 @@ void initialize(VkCommandBuffer cmd) {
         // Binding 1: ModelUniforms (dynamic uniform buffer)
         // Binding 2: PointLights (storage buffer)
         // Binding 3: SpotLights (storage buffer)
-        // Binding 4: Texture + Sampler (combined image sampler) <-- НОВОЕ
+        // Binding 4: Texture + Sampler (combined image sampler)
 
         {
             VkDescriptorSetLayoutBinding bindings[] = {
@@ -778,13 +778,13 @@ void initialize(VkCommandBuffer cmd) {
                     .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
                 },
                 {
-                    .binding = 5,  // НОВОЕ: Shadow Map + сэмплер с PCF
+                    .binding = 5,  // Shadow Map + сэмплер с PCF
                     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     .descriptorCount = 1,
                     .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
                 },
                 {
-                    .binding = 6,  // DEBUG: Shadow Map raw (для чтения глубины без сравнения)
+                    .binding = 6,  // Shadow Map raw (для чтения глубины без сравнения)
                     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     .descriptorCount = 1,
                     .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -1653,7 +1653,7 @@ void initialize(VkCommandBuffer cmd) {
             .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
         };
         
-        // DEBUG: Shadow Map как обычная текстура (без сравнения)
+        // Shadow Map как обычная текстура (для чтения размера в шейдере)
         VkDescriptorImageInfo shadow_image_info_raw{
             .sampler = missing_texture_sampler,  // Обычный sampler без сравнения
             .imageView = shadow_map_view,
@@ -1718,7 +1718,7 @@ void initialize(VkCommandBuffer cmd) {
             {
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = mat.descriptor_set,
-                .dstBinding = 6,  // DEBUG: Shadow Map raw
+                .dstBinding = 6,  // Shadow Map raw
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
                 .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -2087,116 +2087,9 @@ void update(double time) {
     // Вычисляем соотношение сторон экрана для матрицы проекции
     float aspect_ratio = float(veekay::app.window_width) / float(veekay::app.window_height);
     
-    // НОВОЕ: Вычисляем light space matrix для shadow mapping от точечного источника
+    // Вычисляем light space matrix для shadow mapping от точечного источника
     veekay::vec3 light_pos = point_lights.empty() ? veekay::vec3{0.0f, -5.0f, 0.0f} : point_lights[0].position;
     veekay::mat4 light_space_matrix = calculateLightSpaceMatrix(light_pos);
-    
-    // DEBUG: Вывести матрицу один раз (только первые несколько кадров)
-    static int debug_counter = 0;
-    if (debug_counter < 1) {
-        std::cout << "=== SHADOW MAPPING DEBUG ===" << std::endl;
-        std::cout << "Point Light position: " << light_pos.x << ", " << light_pos.y << ", " << light_pos.z << std::endl;
-        std::cout << "Cube position: 0, -0.5, 0" << std::endl;
-        std::cout << "Floor position: 0, 0, 0" << std::endl;
-        std::cout << "Camera position: " << camera.position.x << ", " << camera.position.y << ", " << camera.position.z << std::endl;
-        
-        std::cout << "Light space matrix[0]: " 
-                  << light_space_matrix.elements[0][0] << ", "
-                  << light_space_matrix.elements[0][1] << ", "
-                  << light_space_matrix.elements[0][2] << ", "
-                  << light_space_matrix.elements[0][3] << std::endl;
-        std::cout << "Light space matrix[1]: " 
-                  << light_space_matrix.elements[1][0] << ", "
-                  << light_space_matrix.elements[1][1] << ", "
-                  << light_space_matrix.elements[1][2] << ", "
-                  << light_space_matrix.elements[1][3] << std::endl;
-        std::cout << "Light space matrix[2]: " 
-                  << light_space_matrix.elements[2][0] << ", "
-                  << light_space_matrix.elements[2][1] << ", "
-                  << light_space_matrix.elements[2][2] << ", "
-                  << light_space_matrix.elements[2][3] << std::endl;
-        std::cout << "Light space matrix[3]: " 
-                  << light_space_matrix.elements[3][0] << ", "
-                  << light_space_matrix.elements[3][1] << ", "
-                  << light_space_matrix.elements[3][2] << ", "
-                  << light_space_matrix.elements[3][3] << std::endl;
-        
-        // DEBUG: Проверяем VIEW space (до проекции)
-        // Вычисляем только view matrix
-        veekay::vec3 eye = light_pos;
-        veekay::vec3 center = {0.0f, 0.0f, 0.0f};
-        veekay::vec3 up_vec = {0.0f, 0.0f, 1.0f};
-        
-        veekay::vec3 f = {center.x - eye.x, center.y - eye.y, center.z - eye.z};
-        float f_len = std::sqrt(f.x*f.x + f.y*f.y + f.z*f.z);
-        f.x /= f_len; f.y /= f_len; f.z /= f_len;
-        
-        veekay::vec3 r = {f.y * up_vec.z - f.z * up_vec.y, f.z * up_vec.x - f.x * up_vec.z, f.x * up_vec.y - f.y * up_vec.x};
-        float r_len = std::sqrt(r.x*r.x + r.y*r.y + r.z*r.z);
-        r.x /= r_len; r.y /= r_len; r.z /= r_len;
-        
-        veekay::vec3 u = {r.y * f.z - r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y - r.y * f.x};
-        
-        veekay::mat4 view_only = veekay::mat4::identity();
-        view_only.elements[0][0] = r.x; view_only.elements[1][0] = r.y; view_only.elements[2][0] = r.z;
-        view_only.elements[3][0] = -(r.x * eye.x + r.y * eye.y + r.z * eye.z);
-        view_only.elements[0][1] = u.x; view_only.elements[1][1] = u.y; view_only.elements[2][1] = u.z;
-        view_only.elements[3][1] = -(u.x * eye.x + u.y * eye.y + u.z * eye.z);
-        view_only.elements[0][2] = -f.x; view_only.elements[1][2] = -f.y; view_only.elements[2][2] = -f.z;
-        view_only.elements[3][2] = (f.x * eye.x + f.y * eye.y + f.z * eye.z);
-        
-        // Трансформируем куб в view space
-        float cube_view_x = view_only.elements[0][0] * 0.0f + view_only.elements[1][0] * (-0.5f) + 
-                            view_only.elements[2][0] * 0.0f + view_only.elements[3][0];
-        float cube_view_y = view_only.elements[0][1] * 0.0f + view_only.elements[1][1] * (-0.5f) + 
-                            view_only.elements[2][1] * 0.0f + view_only.elements[3][1];
-        float cube_view_z = view_only.elements[0][2] * 0.0f + view_only.elements[1][2] * (-0.5f) + 
-                            view_only.elements[2][2] * 0.0f + view_only.elements[3][2];
-        
-        std::cout << "DEBUG: Cube in VIEW space (before projection): " 
-                  << cube_view_x << ", " << cube_view_y << ", " << cube_view_z << std::endl;
-        std::cout << "       Expected: Z should be NEGATIVE (around -4.5) for object in front of camera" << std::endl;
-        
-        // Проверяем трансформацию куба (позиция 0, -0.5, 0) в light space
-        // Применяем матрицу вручную: result = matrix * vec4(0, -0.5, 0, 1)
-        float cube_ls_x = light_space_matrix.elements[0][0] * 0.0f + 
-                          light_space_matrix.elements[1][0] * (-0.5f) + 
-                          light_space_matrix.elements[2][0] * 0.0f + 
-                          light_space_matrix.elements[3][0] * 1.0f;
-        float cube_ls_y = light_space_matrix.elements[0][1] * 0.0f + 
-                          light_space_matrix.elements[1][1] * (-0.5f) + 
-                          light_space_matrix.elements[2][1] * 0.0f + 
-                          light_space_matrix.elements[3][1] * 1.0f;
-        float cube_ls_z = light_space_matrix.elements[0][2] * 0.0f + 
-                          light_space_matrix.elements[1][2] * (-0.5f) + 
-                          light_space_matrix.elements[2][2] * 0.0f + 
-                          light_space_matrix.elements[3][2] * 1.0f;
-        float cube_ls_w = light_space_matrix.elements[0][3] * 0.0f + 
-                          light_space_matrix.elements[1][3] * (-0.5f) + 
-                          light_space_matrix.elements[2][3] * 0.0f + 
-                          light_space_matrix.elements[3][3] * 1.0f;
-        
-        std::cout << "Cube in light space (clip): " << cube_ls_x << ", " << cube_ls_y << ", " << cube_ls_z << ", " << cube_ls_w << std::endl;
-        std::cout << "Cube in NDC: " << (cube_ls_x/cube_ls_w) << ", " << (cube_ls_y/cube_ls_w) << ", " << (cube_ls_z/cube_ls_w) << std::endl;
-        std::cout << "Cube in texture coords: " << (cube_ls_x/cube_ls_w * 0.5f + 0.5f) << ", " 
-                  << (cube_ls_y/cube_ls_w * 0.5f + 0.5f) << ", " 
-                  << (cube_ls_z/cube_ls_w * 0.5f + 0.5f) << std::endl;
-        std::cout << "Near/Far planes: 0.1 / 20.0" << std::endl;
-        std::cout << "Shadow camera: (" << light_pos.x << ", " << light_pos.y << ", " << light_pos.z 
-                  << ") looking at (0, 0, 0) [-Y is UP!]" << std::endl;
-        std::cout << "Ortho bounds: -10 to 10 (X and Z)" << std::endl;
-        
-        // ВАЖНО: Проверяем что depth в правильном диапазоне [0, 1]
-        float expected_depth = (cube_ls_z / cube_ls_w);
-        std::cout << "CRITICAL: Cube Z in NDC should be in [0,1]: " << expected_depth << std::endl;
-        if (expected_depth < 0.0f || expected_depth > 1.0f) {
-            std::cout << "ERROR: Depth out of range! Shadows will NOT work!" << std::endl;
-        } else {
-            std::cout << "OK: Depth in valid range, shadows should work if shader is correct" << std::endl;
-        }
-        std::cout << "============================" << std::endl;
-        debug_counter++;
-    }
     
     // Формируем uniform-буфер с данными сцены
     SceneUniforms scene_uniforms{
@@ -2210,14 +2103,8 @@ void update(double time) {
         },
         .point_light_count = static_cast<uint32_t>(point_lights.size()),
         .spot_light_count = static_cast<uint32_t>(spot_lights.size()),
-        .light_space_matrix = light_space_matrix,  // НОВОЕ: добавляем матрицу света
+        .light_space_matrix = light_space_matrix,
     };
-    
-    // DEBUG: Проверяем что матрица действительно в структуре
-    if (debug_counter < 1) {
-        std::cout << "SceneUniforms.light_space_matrix[3][2] = " << scene_uniforms.light_space_matrix.elements[3][2] << std::endl;
-        std::cout << "Expected: ~0.398, If 0.0 then problem!" << std::endl;
-    }
 
     // Копируем массивы источников света в GPU буферы
     if (!point_lights.empty()) {
@@ -2245,7 +2132,7 @@ void update(double time) {
     // Копируем данные сцены в GPU буфер
     *(SceneUniforms*)scene_uniforms_buffer->mapped_region = scene_uniforms;
 
-    // НОВОЕ: Копируем light space matrix для shadow pass
+    // Копируем light space matrix для shadow pass
     *(veekay::mat4*)light_space_buffer->mapped_region = light_space_matrix;
 
     // Копируем данные моделей с учетом выравнивания (alignment)

@@ -108,13 +108,13 @@ layout(binding = 3) readonly buffer SpotLightsBuffer {
     SpotLight spot_lights[];    // Динамический массив (размер = spot_light_count)
 };
 
-// НОВОЕ: Текстура материала + сэмплер
+// Текстура материала + сэмплер
 layout(binding = 4) uniform sampler2D material_texture;
 
-// НОВОЕ: Shadow Map + сэмплер с PCF
+// Shadow Map + сэмплер с PCF
 layout(binding = 5) uniform sampler2DShadow shadow_map;
 
-// DEBUG: Shadow Map как обычная текстура для чтения глубины
+// Shadow Map как обычная текстура для чтения размера в PCF
 layout(binding = 6) uniform sampler2D shadow_map_raw;
 
 // ============================================================================
@@ -137,13 +137,7 @@ float calculateShadow(vec4 frag_pos_light_space) {
     }
     
     // Bias для борьбы с shadow acne (артефактами самозатенения)
-    // ИСПРАВЛЕНО: увеличен bias для лучшей борьбы с артефактами
     float bias = 0.005;
-    
-    // DEBUG: простая проверка без PCF
-    // Раскомментируйте для отладки
-    //float closest_depth = texture(shadow_map_raw, proj_coords.xy).r;
-    //return (proj_coords.z - bias) > closest_depth ? 0.0 : 1.0;
     
     // PCF (Percentage Closer Filtering) - сглаживание теней
     // Сэмплируем несколько соседних текселей и усредняем результат
@@ -274,32 +268,6 @@ vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir) {
 // ============================================================================
 // Вычисляет итоговый цвет пикселя с учетом всех источников света
 void main() {
-    // DEBUG: Визуализация light space координат
-    // Раскомментируйте для отладки
-    /*
-    vec3 proj_coords = frag_position_light_space.xyz / frag_position_light_space.w;
-    proj_coords = proj_coords * 0.5 + 0.5;
-    
-    // Цветовая визуализация глубины для лучшего понимания:
-    // Синий = очень близко (0.0 - 0.3)
-    // Зеленый = средняя дистанция (0.3 - 0.7)  
-    // Красный = далеко (0.7 - 1.0)
-    // Белый = за пределами far plane (>1.0)
-    float depth = proj_coords.z;
-    vec3 color;
-    if (depth < 0.3) {
-        color = vec3(0, 0, 1); // Синий
-    } else if (depth < 0.7) {
-        color = vec3(0, 1, 0); // Зеленый
-    } else if (depth < 1.0) {
-        color = vec3(1, 0, 0); // Красный
-    } else {
-        color = vec3(1, 1, 1); // Белый = ЗА ПРЕДЕЛАМИ!
-    }
-    out_color = vec4(color, 1.0);
-    return;
-    */
-    
     // Нормализуем нормаль (интерполяция могла изменить её длину)
     vec3 normal = normalize(frag_normal);
     

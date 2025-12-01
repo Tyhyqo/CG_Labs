@@ -97,6 +97,6 @@ void main() {
     // Передаем текстурные координаты без изменений
     frag_uv = in_uv;
     
-    // НОВОЕ: Вычисляем позицию в light space для shadow mapping
+    // Вычисляем позицию в light space для shadow mapping
     frag_position_light_space = scene.light_space_matrix * world_position;
 }
