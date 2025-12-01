@@ -893,11 +893,11 @@ void initialize(VkCommandBuffer cmd) {
     // Добавляем один точечный источник света СВЕРХУ (теперь используется для теней)
     point_lights.clear();
     point_lights.push_back(PointLight{
-        .position = {0.0f, -5.0f, 0.0f},  // Свет сверху (-Y = вверх в этой системе)
+        .position = {6.0f, -4.0f, 5.0f},  // Свет сверху (-Y = вверх в этой системе)
         .ambient = {0.2f, 0.2f, 0.2f},
         .diffuse = {1.0f, 1.0f, 1.0f},    // Яркий белый свет
         .specular = {1.0f, 1.0f, 1.0f},
-        .constant = 1.0f,
+        .constant = 0.6f,
         .linear = 0.014f,                  // Слабое затухание (освещает далеко)
         .quadratic = 0.0007f,
     });
