@@ -1843,27 +1843,17 @@ void shutdown() {
 // - Обновление позиций объектов (анимация)
 // - Подготовку данных для отправки в шейдеры
 void update(double time) {
-    // Статические переменные для сохранения состояния направленного света между кадрами
-    static float dir_direction[3] = {-0.3f, -1.0f, -0.5f};  // КРИТИЧНО: Y отрицательный = свет светит ВНИЗ на объекты!
-    static float dir_ambient[3] = {0.3f, 0.3f, 0.3f};    // Увеличен для видимости теней
-    static float dir_diffuse[3] = {0.8f, 0.8f, 0.8f};    // Увеличен для контраста
-    static float dir_specular[3] = {1.0f, 1.0f, 1.0f};
-    
     // ========================================================================
     // UI: Панель управления освещением
     // ========================================================================
     ImGui::Begin("Lighting Controls");
     
-    // Блок управления направленным светом (глобальное освещение)
-    if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::DragFloat3("Direction", dir_direction, 0.01f, -1.0f, 1.0f);
-        ImGui::ColorEdit3("Ambient", dir_ambient);
-        ImGui::ColorEdit3("Diffuse", dir_diffuse);
-        ImGui::ColorEdit3("Specular", dir_specular);
-    }
+    ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Shadow Mapping Active");
+    ImGui::Text("Shadows are cast from Point Light 0");
+    ImGui::Separator();
     
     // Блок управления точечными источниками света
-    if (ImGui::CollapsingHeader("Point Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Point Lights (with Shadows)", ImGuiTreeNodeFlags_DefaultOpen)) {
         // Редактирование каждого существующего точечного источника
         for (size_t i = 0; i < point_lights.size(); ++i) {
             ImGui::PushID(int(i));  // Уникальный ID для корректной работы ImGui
@@ -1881,6 +1871,11 @@ void update(double time) {
         }
         
         // Кнопки добавления/удаления точечных источников
+        ImGui::Separator();
+        if (point_lights.empty()) {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Warning: No point lights - shadows disabled!");
+        }
+        
         if (ImGui::Button("Add Point Light") && point_lights.size() < max_point_lights) {
             point_lights.push_back(PointLight{
                 .position = {0.0f, -2.0f, 0.0f},
@@ -1893,13 +1888,17 @@ void update(double time) {
             });
         }
         ImGui::SameLine();
-        if (ImGui::Button("Remove Point Light") && !point_lights.empty()) {
+        if (ImGui::Button("Remove Point Light") && point_lights.size() > 1) {
             point_lights.pop_back();
+        }
+        
+        if (point_lights.size() == 1) {
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(Keep at least 1 for shadows)");
         }
     }
     
     // Блок управления прожекторами (направленные конусы света)
-    if (ImGui::CollapsingHeader("Spot Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Spot Lights (no shadows)")) {
         for (size_t i = 0; i < spot_lights.size(); ++i) {
             ImGui::PushID(int(100 + i));  // Смещение ID чтобы не пересекались с point lights
             if (ImGui::TreeNode(("Spot Light " + std::to_string(i)).c_str())) {
