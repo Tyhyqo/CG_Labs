@@ -2041,72 +2041,58 @@ void update(double time) {
             ImGui::Spacing();
             
             // =============================================================
-            // ТОЧЕЧНЫЕ ИСТОЧНИКИ
+            // ТОЧЕЧНЫЙ ИСТОЧНИК СВЕТА
             // =============================================================
             ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.8f, 0.5f, 0.2f, 0.8f));
-            if (ImGui::CollapsingHeader("Point Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen)) {
                 ImGui::Indent();
                 
                 if (point_lights.empty()) {
-                    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "No point lights in scene");
-                } else {
-                    for (size_t i = 0; i < point_lights.size(); ++i) {
-                        ImGui::PushID(int(i));
-                        
-                        std::string label = "Point Light " + std::to_string(i);
-                        if (shadow_light_type == ShadowLightType::Point && shadow_light_index == int(i)) {
-                            label += " [SHADOW]";
-                        }
-                        
-                        if (ImGui::TreeNode(label.c_str())) {
-                            ImGui::DragFloat3("Position", &point_lights[i].position.x, 0.1f);
-                            ImGui::ColorEdit3("Ambient", &point_lights[i].ambient.x);
-                            ImGui::ColorEdit3("Diffuse", &point_lights[i].diffuse.x);
-                            ImGui::ColorEdit3("Specular", &point_lights[i].specular.x);
-                            
-                            ImGui::Text("Attenuation:");
-                            ImGui::Indent();
-                            ImGui::DragFloat("Constant", &point_lights[i].constant, 0.01f, 0.0f, 10.0f);
-                            ImGui::DragFloat("Linear", &point_lights[i].linear, 0.01f, 0.0f, 1.0f);
-                            ImGui::DragFloat("Quadratic", &point_lights[i].quadratic, 0.001f, 0.0f, 1.0f);
-                            ImGui::Unindent();
-                            
-                            ImGui::Spacing();
-                            if (ImGui::Button("Use for Shadows", ImVec2(-1, 0))) {
-                                shadow_light_type = ShadowLightType::Point;
-                                shadow_light_index = int(i);
-                            }
-                            
-                            ImGui::TreePop();
-                        }
-                        
-                        ImGui::PopID();
+                    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Point light is disabled");
+                    ImGui::Spacing();
+                    if (ImGui::Button("Enable Point Light", ImVec2(-1, 0))) {
+                        point_lights.push_back(PointLight{
+                            .position = {0.0f, -2.0f, 0.0f},
+                            .ambient = {0.1f, 0.1f, 0.1f},
+                            .diffuse = {1.0f, 1.0f, 1.0f},
+                            .specular = {1.0f, 1.0f, 1.0f},
+                            .constant = 1.0f,
+                            .linear = 0.09f,
+                            .quadratic = 0.032f,
+                        });
                     }
-                }
-                
-                ImGui::Spacing();
-                ImGui::Separator();
-                ImGui::Spacing();
-                
-                if (ImGui::Button("Add Point Light", ImVec2(-1, 0)) && point_lights.size() < max_point_lights) {
-                    point_lights.push_back(PointLight{
-                        .position = {0.0f, -2.0f, 0.0f},
-                        .ambient = {0.1f, 0.1f, 0.1f},
-                        .diffuse = {1.0f, 1.0f, 1.0f},
-                        .specular = {1.0f, 1.0f, 1.0f},
-                        .constant = 1.0f,
-                        .linear = 0.09f,
-                        .quadratic = 0.032f,
-                    });
-                }
-                
-                if (!point_lights.empty()) {
-                    if (ImGui::Button("Remove Last Point Light", ImVec2(-1, 0))) {
-                        // Если удаляем источник, который используется для теней, переключаемся на первый
-                        if (shadow_light_type == ShadowLightType::Point && shadow_light_index >= int(point_lights.size()) - 1) {
-                            shadow_light_index = std::max(0, int(point_lights.size()) - 2);
+                } else {
+                    // Есть ровно один источник
+                    PointLight& light = point_lights[0];
+                    
+                    ImGui::DragFloat3("Position", &light.position.x, 0.1f);
+                    ImGui::ColorEdit3("Ambient", &light.ambient.x);
+                    ImGui::ColorEdit3("Diffuse", &light.diffuse.x);
+                    ImGui::ColorEdit3("Specular", &light.specular.x);
+                    
+                    ImGui::Text("Attenuation:");
+                    ImGui::Indent();
+                    ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.0f, 10.0f);
+                    ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
+                    ImGui::Unindent();
+                    
+                    ImGui::Spacing();
+                    if (ImGui::Button("Use for Shadows", ImVec2(-1, 0))) {
+                        shadow_light_type = ShadowLightType::Point;
+                        shadow_light_index = 0;
+                    }
+                    
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    
+                    if (ImGui::Button("Disable Point Light", ImVec2(-1, 0))) {
+                        point_lights.clear();
+                        // Переключаемся на directional если был активен point
+                        if (shadow_light_type == ShadowLightType::Point) {
+                            shadow_light_type = ShadowLightType::Directional;
                         }
-                        point_lights.pop_back();
                     }
                 }
                 
@@ -2117,88 +2103,78 @@ void update(double time) {
             ImGui::Spacing();
             
             // =============================================================
-            // ПРОЖЕКТОРЫ
+            // ПРОЖЕКТОР
             // =============================================================
             ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.5f, 0.8f, 0.3f, 0.8f));
-            if (ImGui::CollapsingHeader("Spot Lights")) {
+            if (ImGui::CollapsingHeader("Spot Light")) {
                 ImGui::Indent();
                 
                 if (spot_lights.empty()) {
-                    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "No spot lights in scene");
-                } else {
-                    for (size_t i = 0; i < spot_lights.size(); ++i) {
-                        ImGui::PushID(int(100 + i));
-                        
-                        std::string label = "Spot Light " + std::to_string(i);
-                        if (shadow_light_type == ShadowLightType::Spot && shadow_light_index == int(i)) {
-                            label += " [SHADOW]";
-                        }
-                        
-                        if (ImGui::TreeNode(label.c_str())) {
-                            ImGui::DragFloat3("Position", &spot_lights[i].position.x, 0.1f);
-                            ImGui::DragFloat3("Direction", &spot_lights[i].direction.x, 0.01f, -1.0f, 1.0f);
-                            ImGui::ColorEdit3("Ambient", &spot_lights[i].ambient.x);
-                            ImGui::ColorEdit3("Diffuse", &spot_lights[i].diffuse.x);
-                            ImGui::ColorEdit3("Specular", &spot_lights[i].specular.x);
-                            
-                            ImGui::Text("Attenuation:");
-                            ImGui::Indent();
-                            ImGui::DragFloat("Constant", &spot_lights[i].constant, 0.01f, 0.0f, 10.0f);
-                            ImGui::DragFloat("Linear", &spot_lights[i].linear, 0.01f, 0.0f, 1.0f);
-                            ImGui::DragFloat("Quadratic", &spot_lights[i].quadratic, 0.001f, 0.0f, 1.0f);
-                            ImGui::Unindent();
-                            
-                            ImGui::Text("Cone:");
-                            ImGui::Indent();
-                            float inner_angle = acosf(spot_lights[i].cutOff) * 180.0f / M_PI;
-                            float outer_angle = acosf(spot_lights[i].outerCutOff) * 180.0f / M_PI;
-                            
-                            if (ImGui::SliderFloat("Inner Angle", &inner_angle, 0.0f, 90.0f, "%.1f°")) {
-                                spot_lights[i].cutOff = cosf(toRadians(inner_angle));
-                            }
-                            if (ImGui::SliderFloat("Outer Angle", &outer_angle, 0.0f, 90.0f, "%.1f°")) {
-                                spot_lights[i].outerCutOff = cosf(toRadians(outer_angle));
-                            }
-                            ImGui::Unindent();
-                            
-                            ImGui::Spacing();
-                            if (ImGui::Button("Use for Shadows", ImVec2(-1, 0))) {
-                                shadow_light_type = ShadowLightType::Spot;
-                                shadow_light_index = int(i);
-                            }
-                            
-                            ImGui::TreePop();
-                        }
-                        
-                        ImGui::PopID();
+                    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Spot light is disabled");
+                    ImGui::Spacing();
+                    if (ImGui::Button("Enable Spot Light", ImVec2(-1, 0))) {
+                        spot_lights.push_back(SpotLight{
+                            .position = {0.0f, -3.0f, 0.0f},
+                            .direction = {0.0f, 1.0f, 0.0f},
+                            .ambient = {0.05f, 0.05f, 0.05f},
+                            .diffuse = {1.0f, 1.0f, 1.0f},
+                            .specular = {1.0f, 1.0f, 1.0f},
+                            .constant = 1.0f,
+                            .linear = 0.09f,
+                            .quadratic = 0.032f,
+                            .cutOff = cosf(toRadians(12.5f)),
+                            .outerCutOff = cosf(toRadians(17.5f)),
+                        });
                     }
-                }
-                
-                ImGui::Spacing();
-                ImGui::Separator();
-                ImGui::Spacing();
-                
-                if (ImGui::Button("Add Spot Light", ImVec2(-1, 0)) && spot_lights.size() < max_spot_lights) {
-                    spot_lights.push_back(SpotLight{
-                        .position = {0.0f, -3.0f, 0.0f},
-                        .direction = {0.0f, 1.0f, 0.0f},
-                        .ambient = {0.05f, 0.05f, 0.05f},
-                        .diffuse = {1.0f, 1.0f, 1.0f},
-                        .specular = {1.0f, 1.0f, 1.0f},
-                        .constant = 1.0f,
-                        .linear = 0.09f,
-                        .quadratic = 0.032f,
-                        .cutOff = cosf(toRadians(12.5f)),
-                        .outerCutOff = cosf(toRadians(17.5f)),
-                    });
-                }
-                
-                if (!spot_lights.empty()) {
-                    if (ImGui::Button("Remove Last Spot Light", ImVec2(-1, 0))) {
-                        if (shadow_light_type == ShadowLightType::Spot && shadow_light_index >= int(spot_lights.size()) - 1) {
-                            shadow_light_index = std::max(0, int(spot_lights.size()) - 2);
+                } else {
+                    // Есть ровно один прожектор
+                    SpotLight& light = spot_lights[0];
+                    
+                    ImGui::DragFloat3("Position", &light.position.x, 0.1f);
+                    ImGui::DragFloat3("Direction", &light.direction.x, 0.01f, -1.0f, 1.0f);
+                    ImGui::ColorEdit3("Ambient", &light.ambient.x);
+                    ImGui::ColorEdit3("Diffuse", &light.diffuse.x);
+                    ImGui::ColorEdit3("Specular", &light.specular.x);
+                    
+                    ImGui::Text("Attenuation:");
+                    ImGui::Indent();
+                    ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.0f, 10.0f);
+                    ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
+                    ImGui::Unindent();
+                    
+                    ImGui::Text("Cone:");
+                    ImGui::Indent();
+                    float inner_angle = acosf(light.cutOff) * 180.0f / M_PI;
+                    float outer_angle = acosf(light.outerCutOff) * 180.0f / M_PI;
+                    
+                    if (ImGui::SliderFloat("Inner Angle", &inner_angle, 0.0f, 90.0f, "%.1f°")) {
+                        light.cutOff = cosf(toRadians(inner_angle));
+                    }
+                    if (ImGui::SliderFloat("Outer Angle", &outer_angle, 0.0f, 90.0f, "%.1f°")) {
+                        light.outerCutOff = cosf(toRadians(outer_angle));
+                    }
+                    ImGui::Unindent();
+                    
+                    ImGui::Spacing();
+                    // SpotLight тени не поддерживаются (требуют перспективную проекцию)
+                    ImGui::BeginDisabled();
+                    ImGui::Button("Use for Shadows", ImVec2(-1, 0));
+                    ImGui::EndDisabled();
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip("Spot Light shadows are not supported\n(require perspective projection)");
+                    }
+                    
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    
+                    if (ImGui::Button("Disable Spot Light", ImVec2(-1, 0))) {
+                        spot_lights.clear();
+                        // Переключаемся на directional если был активен spot
+                        if (shadow_light_type == ShadowLightType::Spot) {
+                            shadow_light_type = ShadowLightType::Directional;
                         }
-                        spot_lights.pop_back();
                     }
                 }
                 
