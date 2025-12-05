@@ -1974,19 +1974,19 @@ void update(double time) {
                     // Пресеты материалов
                     ImGui::Spacing();
                     ImGui::Text("Presets:");
-                    if (ImGui::Button("Gold")) {
+                    if (ImGui::Button(("Gold##" + name).c_str())) {
                         models[i].material.albedo = {1.0f, 0.765f, 0.336f};
                         models[i].material.specular = {1.0f, 0.9f, 0.5f};
                         models[i].material.shininess = 128.0f;
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("Silver")) {
+                    if (ImGui::Button(("Silver##" + name).c_str())) {
                         models[i].material.albedo = {0.75f, 0.75f, 0.75f};
                         models[i].material.specular = {1.0f, 1.0f, 1.0f};
                         models[i].material.shininess = 128.0f;
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("Plastic")) {
+                    if (ImGui::Button(("Plastic##" + name).c_str())) {
                         models[i].material.albedo = {0.5f, 0.5f, 0.5f};
                         models[i].material.specular = {0.3f, 0.3f, 0.3f};
                         models[i].material.shininess = 32.0f;
@@ -2028,7 +2028,7 @@ void update(double time) {
                     ImGui::ColorEdit3("Specular##Dir", &directional_light.specular.x);
                     
                     ImGui::Spacing();
-                    if (ImGui::Button("Use for Shadows##Dir", ImVec2(-1, 0))) {
+                    if (ImGui::Button("Use for Shadows##DirShadow", ImVec2(-1, 0))) {
                         shadow_light_type = ShadowLightType::Directional;
                         shadow_light_index = 0;
                     }
@@ -2065,20 +2065,20 @@ void update(double time) {
                     // Есть ровно один источник
                     PointLight& light = point_lights[0];
                     
-                    ImGui::DragFloat3("Position", &light.position.x, 0.1f);
-                    ImGui::ColorEdit3("Ambient", &light.ambient.x);
-                    ImGui::ColorEdit3("Diffuse", &light.diffuse.x);
-                    ImGui::ColorEdit3("Specular", &light.specular.x);
+                    ImGui::DragFloat3("Position##PointPos", &light.position.x, 0.1f);
+                    ImGui::ColorEdit3("Ambient##PointAmb", &light.ambient.x);
+                    ImGui::ColorEdit3("Diffuse##PointDiff", &light.diffuse.x);
+                    ImGui::ColorEdit3("Specular##PointSpec", &light.specular.x);
                     
                     ImGui::Text("Attenuation:");
                     ImGui::Indent();
-                    ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.0f, 10.0f);
-                    ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 1.0f);
-                    ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Constant##PointConst", &light.constant, 0.01f, 0.0f, 10.0f);
+                    ImGui::DragFloat("Linear##PointLin", &light.linear, 0.01f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Quadratic##PointQuad", &light.quadratic, 0.001f, 0.0f, 1.0f);
                     ImGui::Unindent();
                     
                     ImGui::Spacing();
-                    if (ImGui::Button("Use for Shadows", ImVec2(-1, 0))) {
+                    if (ImGui::Button("Use for Shadows##PointShadow", ImVec2(-1, 0))) {
                         shadow_light_type = ShadowLightType::Point;
                         shadow_light_index = 0;
                     }
@@ -2130,17 +2130,17 @@ void update(double time) {
                     // Есть ровно один прожектор
                     SpotLight& light = spot_lights[0];
                     
-                    ImGui::DragFloat3("Position", &light.position.x, 0.1f);
-                    ImGui::DragFloat3("Direction", &light.direction.x, 0.01f, -1.0f, 1.0f);
-                    ImGui::ColorEdit3("Ambient", &light.ambient.x);
-                    ImGui::ColorEdit3("Diffuse", &light.diffuse.x);
-                    ImGui::ColorEdit3("Specular", &light.specular.x);
+                    ImGui::DragFloat3("Position##SpotPos", &light.position.x, 0.1f);
+                    ImGui::DragFloat3("Direction##SpotDir", &light.direction.x, 0.01f, -1.0f, 1.0f);
+                    ImGui::ColorEdit3("Ambient##SpotAmb", &light.ambient.x);
+                    ImGui::ColorEdit3("Diffuse##SpotDiff", &light.diffuse.x);
+                    ImGui::ColorEdit3("Specular##SpotSpec", &light.specular.x);
                     
                     ImGui::Text("Attenuation:");
                     ImGui::Indent();
-                    ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.0f, 10.0f);
-                    ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 1.0f);
-                    ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Constant##SpotConst", &light.constant, 0.01f, 0.0f, 10.0f);
+                    ImGui::DragFloat("Linear##SpotLin", &light.linear, 0.01f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Quadratic##SpotQuad", &light.quadratic, 0.001f, 0.0f, 1.0f);
                     ImGui::Unindent();
                     
                     ImGui::Text("Cone:");
@@ -2148,10 +2148,10 @@ void update(double time) {
                     float inner_angle = acosf(light.cutOff) * 180.0f / M_PI;
                     float outer_angle = acosf(light.outerCutOff) * 180.0f / M_PI;
                     
-                    if (ImGui::SliderFloat("Inner Angle", &inner_angle, 0.0f, 90.0f, "%.1f°")) {
+                    if (ImGui::SliderFloat("Inner Angle##SpotInner", &inner_angle, 0.0f, 90.0f, "%.1f°")) {
                         light.cutOff = cosf(toRadians(inner_angle));
                     }
-                    if (ImGui::SliderFloat("Outer Angle", &outer_angle, 0.0f, 90.0f, "%.1f°")) {
+                    if (ImGui::SliderFloat("Outer Angle##SpotOuter", &outer_angle, 0.0f, 90.0f, "%.1f°")) {
                         light.outerCutOff = cosf(toRadians(outer_angle));
                     }
                     ImGui::Unindent();
@@ -2159,7 +2159,7 @@ void update(double time) {
                     ImGui::Spacing();
                     // SpotLight тени не поддерживаются (требуют перспективную проекцию)
                     ImGui::BeginDisabled();
-                    ImGui::Button("Use for Shadows", ImVec2(-1, 0));
+                    ImGui::Button("Use for Shadows##SpotShadow", ImVec2(-1, 0));
                     ImGui::EndDisabled();
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                         ImGui::SetTooltip("Spot Light shadows are not supported\n(require perspective projection)");
